@@ -240,3 +240,133 @@
 	* `_X_AMAZN_TRACE_ID`: contains the tracing header
 	* `AWS_XRAY_CONTEXT_MISSING`: by default, `LOG_ERROR`
 	* `AWS_XRAY_DAEMON_ADDRESS`: X-Ray daemon `IP:PORT` (most important)
+
+## Lambda in VPC
+* by default, launched outside default VPC. so, can' access resources within the default VPC
+* to deploy within VPC, we need to define VPC ID, subnets, and secuirty groups. Lambda will create an ENI in the subnets. 
+* to create this ENI, Lambda will require `AWSLambdaVPCAccessExecutionRole`
+* by default, Lambda inside default VPC doesn't have internet
+* deploying Lambda in public subnet will NOT give it internet or public IP
+* to give it internet access, we need to deploy in private subnet and give it NAT Gateway/Instance (configed through route tables)
+
+## Lambda Performance
+* Configuration
+	* RAM: default 128MB; max 10240MB; increases vCPU with RAM; 1,792MB equal to 1 full vCPU
+	* to handle computation heavy application (higher CPU), increase RAM
+	* default timeout of 3 seconds; max 900 seconds (15 mintutes);
+* execution context
+	* temporary runtime environment that initializes external dependencies of our code
+	* great for database connections, HTTP clients, SDK clients
+	* maintained for some time in anticipation of another invocation (reused)
+	* includes `/tmp` directory
+* if something needs to be done again and again, its better to put it outside the function handler
+* temporary files:
+	* use `/tmp` space
+	* good to download big file to work or if lambda needs disk space to perform something
+	* max size is 512MB
+	* the content remains when the context is frozen, providing transient cache to be used by multiple invocations;
+	* this could be helpfult to checkpoint work
+	* for permanent persistence, use S3
+
+## Lambda Concurrency and Throttling
+* concurrency limit of 1000 executions
+* "Reserved Concurrency" at functional level can be set to restrict number of concurrent executions
+* each invocation over this limit will trigger a "Throttle"
+* Throttle behaviors:
+	* synchronous invocation: return ThrottleError - 429
+	* Asynchronous invocation: retry automatically and go to DLQ
+* for over 1000 limit, open a support ticket
+* issues:
+	* if not reserve concurrency is set, one function may get more executions and other functions may be chocked
+	* if not enough concurrency available for async invocations, additional reqeusts will be throttled. 
+	* async events: Lambda will return the event to queue (throttling error: 429, and system error: 500s) and try to run it again for upto 6 hours; retry time increases from 1sec to max 5 minutes (exponential backoff)
+* Cold starts and Provisioned Concurrency:
+	* when new Lambda instance is created, the code needs to be loaded and code outside the handler need to be run first (init)
+	* if the 'init' is large, this can take some time
+	* so, the first request served have higher latency than the rest (cold start)
+	* This can be overcome by Provisioned Concurrency
+	* concurrency is allocated before the function is invoked
+	* Application auto scaling can manage concurrency (schedule or target utilization)
+	* additional resource: https://aws.amazon.com/blogs/compute/announcing-improved-vpc-networking-for-aws-lambda-functions/
+
+## Function Dependencies
+* if the function depends on external libraries (AWS X-Ray SDK, Database Clients), we will need to install the packages along code and **zip it together**
+* example:
+	* node.js: npm and 'node_modules' directory
+	* python: use `pip --target` options
+	* java: include .jar files
+* upload the zip file to Lambda, if less than 50MB; otherwise S3 first and reference in code
+* native libraries work; need to be compiled on Amazon Linux
+* AWS SDK comes default with all Lambda Functions
+
+## Lambda and CloudFormation
+* Inline
+	* very simple use case
+	* within our CloudFormation template
+	* need to use the Code.ZipFile property of the template
+	* can't include function dependencies
+* Through S3
+	* store the Lambda Zip in S3
+	* refer the zip location in CloudFormation code:
+		* S3Bucket
+		* S3Key (full path to zip)
+		* S3ObjectVersion (if versioned bucket)
+	* need to manually update version in Lambda
+
+## Lambda Layers
+* use cases:
+	* enable to create Custom Runtimes; C++ and Rust
+	* Externalize dependencies to re-use them
+* The way is to create a layer for Lambda. The layers can be referenced from the function. This way we don't need to repackage everthing each time we update the version of app
+* Additional reading: https://aws.amazon.com/blogs/aws/new-for-aws-lambda-use-any-programming-language-and-share-common-components/
+
+## Lambda Versions and Alias
+* Versions: 
+	* initially working with Lambda Function, the version is $LATEST (this is mutable)
+	* when we're ready to publish a Lambda function, we can create a version
+	* versions are immutable (cant change code or environment variables)
+	* versions will have increasing number
+	* versions get their own ARN (Amazon Resource Number)
+	* Version = Code + configuration
+	* each version of lambda can be accessed
+* Aliases:
+	* pointers to versions
+	* we can define dev/test/prod aliases and have them point at different lambda versions
+	* they are mutable
+	* can be used with Blue/Green deployment
+	* enable stable configuration of event triggers/destinations
+	* Aliases have their own ARNs
+	* Aliases can't point to other aliases
+
+## Lambda and CodeDeploy
+* can help automate traffic shift for lambda aliases
+* integrated within SAM (Serverless Application Model) framework
+* CodeDeploy can grow traffic on an alias gradually over time shifting from another one
+	* Linear:
+		* Linear10PercentEvery3Minutes
+		* Linear10PercentEvery10Minutes
+	* Canary (try N percent and switch to 100%):
+		* Canary10Percent5Minutes
+		* Canary10Percent30Minutes
+	* AllAtOnce: immediate
+* can create Pre and Post traffic hooks to check health and Rollback on that
+
+## Lambda Limits
+* per region
+* Execution:
+	* memory 128 - 3008MB (64MB increment)
+	* Max execution time: 900 seconds (15 minutes)
+	* Environment variables (4kb)
+	* function container, /tmp direcotry (512MB)
+	* Concurrency executions: 1000 (can be increase by request)
+* Deployment:
+	* Deployment size: 50MB (Compressed), 250 (uncompressed)
+	* can use /tmp directory
+	* environment variable: 4kb
+
+## Best Practices
+* heavy duty and repeatative tasks outside handler
+* environment variable for sensitive information (can be encrypted as well)
+* Minimize deployment package size to runtime requirements (break down big functions)
+* use lambda layers to manage dependencies
+* avoid using recursive code!!

@@ -42,6 +42,7 @@
 		* server side encrytion
 		* must set header: "x-amz-server-side-encryption":"aws:kms"
 		* the header instructs AWS to encryption
+		* throttling can happen because of KSM limit
 	3. SSE-C: client manages their own keys
 		* AWS S3 doesn't store the ecryption keys
 		* HTTPS must be used
@@ -57,6 +58,7 @@
 		* HTTPS endpoint: encryption in flight
 	* HTTPS recommended and default, which is mandatory for SSE-C
 	* also called SSL/TLS
+	* to enforce SSL, Create bucket policy with DENY on condition: `aws:SecureTransport=false  `
 
 ## S3 Security
 * User based

@@ -15,12 +15,12 @@
 * MFA can be setup
 * IAM has predefined policies
 * Apply **Least Privilege Priciples**
+* Policies will **union** for IAM and S3
 
 ## IAM Federation
 * For large corporations
 * can integrate company's own repository of users with IAM
 * This uses SAML(example: Microsoft Active Directory)
-
 
 ## Tasks
 * Add MFA
@@ -81,7 +81,43 @@ In IAM console:
 3. Select the password policies
 4. Click Save
 
+## Authorization Model
+1. if there's explicit DENY, then deny
+2. if there's an ALLOW, then allow
+3. Deny everything else
 
+## Dynamic Policies
+* use case: allow each user a /home/<user> directory in S3: `${aws:username}`
+* rather than having policies for each user, have a dynamic policy
+
+## Types Policies
+* AWS Managed Policies
+	* maintained by AWS
+	* good for power users and admins
+	* updated by AWS in case of new services/APIs
+* Customer Managed Policy
+	* granular control
+	* best practice
+	* version controlled
+	* re-usable
+* Inline Policy
+	* Strict one-to-one relation between policy and principal
+	* policy is deleted with Principal
+
+## AWS Directory Services
+* Help manage Microsoft Active Directory
+* Flavours:
+	1. AWS managed MS AD
+		* create AD in AWS, manage users locally
+		* Supports MFA
+		* can establish 'trust' connection with on-premise AD
+	2. AD Connector
+		* Directory Gateway (proxy) to redirect to on-premise AD
+		* users are managed on-premise AD
+	3. Simple AD
+		* stand alone
+		* AD-compatible managed directory on AWS
+		* can't be joined with on-premise AD
 ## Notes
 * It is better to assign user to groups and attach policies to groups rather than attaching policies to individual users
 * Customize the account alias from IAM Dashboard
